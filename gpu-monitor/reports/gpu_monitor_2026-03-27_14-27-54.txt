@@ -1,0 +1,13 @@
+GPU 监控  2026-03-27_14-27-54  NF5688A7
+
+概览  U%=GPU利用率  显存=已用/总计(MiB)  摘要=父进程命令（完整，按父进程聚合显存）
+[GPU0] 占用   95%  138517/143771  |  父进程 pid=1141036 ~138504MiB | bash scripts/Qwen3_4B_on_HLE_MATH_text_CTO_vllm.sh 0 100
+[GPU1] 占用   98%  130159/143771  |  父进程 pid=3567854 ~130146MiB | bash /data/ppnm/Contrastive-Trajectory-Optimization/scripts/Qwen3_4B_on_HMMT_24_by_CTO_hf.sh
+[GPU2] 占用   96%  129509/143771  |  父进程 pid=1452132 ~129496MiB | bash scripts/Qwen3_30B_on_IMO_by_CTO_vllm.sh 0 100
+[GPU3] 占用   99%  122431/143771  |  父进程 pid=2820717 ~122418MiB | bash scripts/Qwen3_4B_on_HMMT_25_by_CTO_vllm_run2.sh 0 100
+[GPU4] 占用  100%  122567/143771  |  父进程 pid=2378318 ~122554MiB | bash scripts/Phi4_reasoning_on_HMMT_24_by_CTO_vllm.sh
+[GPU5] 占用   98%  122567/143771  |  父进程 pid=2378474 ~122554MiB | bash scripts/Phi4_reasoning_on_HMMT_25_by_CTO_vllm.sh 0 100
+[GPU6] 占用   98%  124213/143771  |  父进程 pid=935132 ~124200MiB | bash scripts/Qwen3_4B_on_IMO_by_CTO_vllm.sh 0 401
+[GPU7] 占用   98%  122585/143771  |  父进程 pid=1905266 ~122572MiB | bash scripts/Qwen3_30B_on_HLE_MATH_text_CTO_vllm.sh 0 100
+
+结论: 无空闲卡（按当前阈值）。详细状态见 last_snapshot.json。

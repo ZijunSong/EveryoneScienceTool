@@ -1,0 +1,6 @@
+# agent-idea-debate：不纳入版本库的本地产物与入口脚本
+agent-idea-debate/outputs/
+agent-idea-debate/run.sh
+
+__pycache__/
+*.py[cod]

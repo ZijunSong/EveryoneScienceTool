@@ -1,0 +1,160 @@
+{
+  "version": 1,
+  "timestamp": "2026-03-28_16-10-59",
+  "hostname": "NF5688A7",
+  "nvidia_smi_diag": "",
+  "gpus": [
+    {
+      "index": 0,
+      "name": "NVIDIA H20-3e",
+      "utilization_gpu": 100,
+      "memory_used_mib": 123405,
+      "memory_total_mib": 143771,
+      "compute_apps": [
+        {
+          "pid": 3092512,
+          "ppid": 3091870,
+          "process_name": "python",
+          "used_gpu_memory_mib": 123392,
+          "cmdline": "python code/standard_sampling.py --model /data/ppnm/models/Phi-4-reasoning --input /data/ppnm/Contrastive-Trajectory-Optimization/data/IMO-ANSWERBENCH.jsonl --output /data/ppnm/Contrastive-Trajectory-Optimization/runs/IMO_Phi4_reasoning_CTO_vllm_step1/results --n-completions 32 --batch-size 2048 --tensor-parallel-size 1 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 32768 --start-idx 0 --end-idx 100",
+          "parent_cmdline": "python code/standard_sampling.py --model /data/ppnm/models/Phi-4-reasoning --input /data/ppnm/Contrastive-Trajectory-Optimization/data/IMO-ANSWERBENCH.jsonl --output /data/ppnm/Contrastive-Trajectory-Optimization/runs/IMO_Phi4_reasoning_CTO_vllm_step1/results --n-completions 32 --batch-size 2048 --tensor-parallel-size 1 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 32768 --start-idx 0 --end-idx 100",
+          "experiment_parent_pid": 3091862,
+          "experiment_parent_cmdline": "bash scripts/Phi4_reasoning_on_IMO_by_CTO_vllm.sh 0 100"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "name": "NVIDIA H20-3e",
+      "utilization_gpu": 98,
+      "memory_used_mib": 130159,
+      "memory_total_mib": 143771,
+      "compute_apps": [
+        {
+          "pid": 3567865,
+          "ppid": 3567854,
+          "process_name": "python",
+          "used_gpu_memory_mib": 130146,
+          "cmdline": "python code/cto_guided_search.py --model /data/ppnm/models/Qwen3-4B-Thinking-2507 --input /data/ppnm/Contrastive-Trajectory-Optimization/data/HMMT_24.jsonl --experience-dir /data/ppnm/Contrastive-Trajectory-Optimization/runs/HMMT24_CTO_step2/results_dedup --output /data/ppnm/Contrastive-Trajectory-Optimization/runs/HMMT24_CTO_hf_step3/results --n-experience-completions 32 --n-completions 32 --alpha 0.7 --plausibility-top-k 5 --backend hf --tensor-parallel-size 4 --max-model-len 100000 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 38912 --start-idx 0 --end-idx 100 --device-map auto --dtype float16",
+          "parent_cmdline": "bash /data/ppnm/Contrastive-Trajectory-Optimization/scripts/Qwen3_4B_on_HMMT_24_by_CTO_hf.sh",
+          "experiment_parent_pid": 3567854,
+          "experiment_parent_cmdline": "bash /data/ppnm/Contrastive-Trajectory-Optimization/scripts/Qwen3_4B_on_HMMT_24_by_CTO_hf.sh"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "name": "NVIDIA H20-3e",
+      "utilization_gpu": 100,
+      "memory_used_mib": 129509,
+      "memory_total_mib": 143771,
+      "compute_apps": [
+        {
+          "pid": 3062633,
+          "ppid": 3062096,
+          "process_name": "python",
+          "used_gpu_memory_mib": 129496,
+          "cmdline": "python code/cto_guided_search.py --model /data/ppnm/models/Qwen3-30B-A3B-Thinking-2507 --input /data/ppnm/Contrastive-Trajectory-Optimization/data/IMO-ANSWERBENCH.jsonl --experience-dir /data/ppnm/Contrastive-Trajectory-Optimization/runs/IMO_30B_CTO_vllm_step6/results_dedup --output /data/ppnm/Contrastive-Trajectory-Optimization/runs/IMO_30B_CTO_vllm_step7/results --n-experience-completions 32 --n-completions 32 --alpha 0.7 --plausibility-top-k 5 --backend vllm --tensor-parallel-size 1 --gpu-memory-utilization 0.6 --max-model-len 100000 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 38912 --start-idx 0 --end-idx 100",
+          "parent_cmdline": "python code/cto_guided_search.py --model /data/ppnm/models/Qwen3-30B-A3B-Thinking-2507 --input /data/ppnm/Contrastive-Trajectory-Optimization/data/IMO-ANSWERBENCH.jsonl --experience-dir /data/ppnm/Contrastive-Trajectory-Optimization/runs/IMO_30B_CTO_vllm_step6/results_dedup --output /data/ppnm/Contrastive-Trajectory-Optimization/runs/IMO_30B_CTO_vllm_step7/results --n-experience-completions 32 --n-completions 32 --alpha 0.7 --plausibility-top-k 5 --backend vllm --tensor-parallel-size 1 --gpu-memory-utilization 0.6 --max-model-len 100000 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 38912 --start-idx 0 --end-idx 100",
+          "experiment_parent_pid": 1452132,
+          "experiment_parent_cmdline": "bash scripts/Qwen3_30B_on_IMO_by_CTO_vllm.sh 0 100"
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "name": "NVIDIA H20-3e",
+      "utilization_gpu": 98,
+      "memory_used_mib": 142871,
+      "memory_total_mib": 143771,
+      "compute_apps": [
+        {
+          "pid": 3150626,
+          "ppid": 3150099,
+          "process_name": "python",
+          "used_gpu_memory_mib": 142858,
+          "cmdline": "python code/cto_guided_search.py --model /data/ppnm/models/Qwen3-4B-Thinking-2507 --input /data/ppnm/Contrastive-Trajectory-Optimization/data/HMMT_25.jsonl --experience-dir /data/ppnm/Contrastive-Trajectory-Optimization/runs/HMMT25_4B_CTO_vllm_run2_step4/results_dedup --output /data/ppnm/Contrastive-Trajectory-Optimization/runs/HMMT25_4B_CTO_vllm_run2_step5/results --n-experience-completions 32 --n-completions 32 --alpha 0.7 --plausibility-top-k 5 --backend vllm --tensor-parallel-size 1 --gpu-memory-utilization 0.6 --max-model-len 100000 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 38912 --start-idx 0 --end-idx 100",
+          "parent_cmdline": "python code/cto_guided_search.py --model /data/ppnm/models/Qwen3-4B-Thinking-2507 --input /data/ppnm/Contrastive-Trajectory-Optimization/data/HMMT_25.jsonl --experience-dir /data/ppnm/Contrastive-Trajectory-Optimization/runs/HMMT25_4B_CTO_vllm_run2_step4/results_dedup --output /data/ppnm/Contrastive-Trajectory-Optimization/runs/HMMT25_4B_CTO_vllm_run2_step5/results --n-experience-completions 32 --n-completions 32 --alpha 0.7 --plausibility-top-k 5 --backend vllm --tensor-parallel-size 1 --gpu-memory-utilization 0.6 --max-model-len 100000 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 38912 --start-idx 0 --end-idx 100",
+          "experiment_parent_pid": 2820717,
+          "experiment_parent_cmdline": "bash scripts/Qwen3_4B_on_HMMT_25_by_CTO_vllm_run2.sh 0 100"
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "name": "NVIDIA H20-3e",
+      "utilization_gpu": 98,
+      "memory_used_mib": 123451,
+      "memory_total_mib": 143771,
+      "compute_apps": [
+        {
+          "pid": 3094051,
+          "ppid": 3093399,
+          "process_name": "python",
+          "used_gpu_memory_mib": 123438,
+          "cmdline": "python code/standard_sampling.py --model /data/ppnm/models/Phi-4-reasoning --input /data/ppnm/Contrastive-Trajectory-Optimization/data/HLE_MATH_text_100_sample_subset.jsonl --output /data/ppnm/Contrastive-Trajectory-Optimization/runs/HLE_MATH_text_Phi4_reasoning_CTO_vllm_step1/results --n-completions 32 --batch-size 2048 --tensor-parallel-size 1 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 32768 --start-idx 0 --end-idx 100",
+          "parent_cmdline": "python code/standard_sampling.py --model /data/ppnm/models/Phi-4-reasoning --input /data/ppnm/Contrastive-Trajectory-Optimization/data/HLE_MATH_text_100_sample_subset.jsonl --output /data/ppnm/Contrastive-Trajectory-Optimization/runs/HLE_MATH_text_Phi4_reasoning_CTO_vllm_step1/results --n-completions 32 --batch-size 2048 --tensor-parallel-size 1 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 32768 --start-idx 0 --end-idx 100",
+          "experiment_parent_pid": 3093391,
+          "experiment_parent_cmdline": "bash scripts/Phi4_reasoning_on_HLE_MATH_text_CTO_vllm.sh 0 100"
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "name": "NVIDIA H20-3e",
+      "utilization_gpu": 98,
+      "memory_used_mib": 122567,
+      "memory_total_mib": 143771,
+      "compute_apps": [
+        {
+          "pid": 3157545,
+          "ppid": 3156954,
+          "process_name": "python",
+          "used_gpu_memory_mib": 122554,
+          "cmdline": "python code/experience_distillation.py --model /data/ppnm/models/Phi-4-reasoning --question-file /data/ppnm/Contrastive-Trajectory-Optimization/data/HMMT_25.jsonl --answer-dir /data/ppnm/Contrastive-Trajectory-Optimization/runs/HMMT25_Phi4_reasoning_CTO_vllm_step5/results --output-dir /data/ppnm/Contrastive-Trajectory-Optimization/runs/HMMT25_Phi4_reasoning_CTO_vllm_step6/results --tensor-parallel-size 1 --max-model-len 32768 --batch-size 2048 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 32768 --n-samples 1 --experience_judge_mode llm_judge --start-idx 0 --end-idx 100",
+          "parent_cmdline": "python code/experience_distillation.py --model /data/ppnm/models/Phi-4-reasoning --question-file /data/ppnm/Contrastive-Trajectory-Optimization/data/HMMT_25.jsonl --answer-dir /data/ppnm/Contrastive-Trajectory-Optimization/runs/HMMT25_Phi4_reasoning_CTO_vllm_step5/results --output-dir /data/ppnm/Contrastive-Trajectory-Optimization/runs/HMMT25_Phi4_reasoning_CTO_vllm_step6/results --tensor-parallel-size 1 --max-model-len 32768 --batch-size 2048 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 32768 --n-samples 1 --experience_judge_mode llm_judge --start-idx 0 --end-idx 100",
+          "experiment_parent_pid": 2378474,
+          "experiment_parent_cmdline": "bash scripts/Phi4_reasoning_on_HMMT_25_by_CTO_vllm.sh 0 100"
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "name": "NVIDIA H20-3e",
+      "utilization_gpu": 99,
+      "memory_used_mib": 124213,
+      "memory_total_mib": 143771,
+      "compute_apps": [
+        {
+          "pid": 936613,
+          "ppid": 935140,
+          "process_name": "python",
+          "used_gpu_memory_mib": 124200,
+          "cmdline": "python code/standard_sampling.py --model /data/ppnm/models/Qwen3-4B-Thinking-2507 --input /data/ppnm/Contrastive-Trajectory-Optimization/data/IMO-ANSWERBENCH.jsonl --output /data/ppnm/Contrastive-Trajectory-Optimization/runs/IMO_4B_CTO_vllm_step1/results --n-completions 32 --batch-size 2048 --tensor-parallel-size 1 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 38912 --start-idx 0 --end-idx 401",
+          "parent_cmdline": "python code/standard_sampling.py --model /data/ppnm/models/Qwen3-4B-Thinking-2507 --input /data/ppnm/Contrastive-Trajectory-Optimization/data/IMO-ANSWERBENCH.jsonl --output /data/ppnm/Contrastive-Trajectory-Optimization/runs/IMO_4B_CTO_vllm_step1/results --n-completions 32 --batch-size 2048 --tensor-parallel-size 1 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 38912 --start-idx 0 --end-idx 401",
+          "experiment_parent_pid": 935132,
+          "experiment_parent_cmdline": "bash scripts/Qwen3_4B_on_IMO_by_CTO_vllm.sh 0 401"
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "name": "NVIDIA H20-3e",
+      "utilization_gpu": 98,
+      "memory_used_mib": 122585,
+      "memory_total_mib": 143771,
+      "compute_apps": [
+        {
+          "pid": 3141847,
+          "ppid": 3141312,
+          "process_name": "python",
+          "used_gpu_memory_mib": 122572,
+          "cmdline": "python code/experience_distillation.py --model /data/ppnm/models/Qwen3-30B-A3B-Thinking-2507 --question-file /data/ppnm/Contrastive-Trajectory-Optimization/data/HLE_MATH_text_100_sample_subset.jsonl --answer-dir /data/ppnm/Contrastive-Trajectory-Optimization/runs/HLE_MATH_text_30B_CTO_vllm_step5/results --output-dir /data/ppnm/Contrastive-Trajectory-Optimization/runs/HLE_MATH_text_30B_CTO_vllm_step6/results --tensor-parallel-size 1 --batch-size 2048 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 38912 --n-samples 1 --experience_judge_mode llm_judge --start-idx 0 --end-idx 100",
+          "parent_cmdline": "python code/experience_distillation.py --model /data/ppnm/models/Qwen3-30B-A3B-Thinking-2507 --question-file /data/ppnm/Contrastive-Trajectory-Optimization/data/HLE_MATH_text_100_sample_subset.jsonl --answer-dir /data/ppnm/Contrastive-Trajectory-Optimization/runs/HLE_MATH_text_30B_CTO_vllm_step5/results --output-dir /data/ppnm/Contrastive-Trajectory-Optimization/runs/HLE_MATH_text_30B_CTO_vllm_step6/results --tensor-parallel-size 1 --batch-size 2048 --temperature 0.6 --top-p 0.95 --top-k 20 --max-tokens 38912 --n-samples 1 --experience_judge_mode llm_judge --start-idx 0 --end-idx 100",
+          "experiment_parent_pid": 1905266,
+          "experiment_parent_cmdline": "bash scripts/Qwen3_30B_on_HLE_MATH_text_CTO_vllm.sh 0 100"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+GPU 监控  2026-03-27_12-39-35  NF5688A7
+
+概览  U%=GPU利用率  显存=已用/总计(MiB)  摘要=父进程命令（完整，按父进程聚合显存）
+[GPU0] 占用   97%  138517/143771  |  父进程 pid=1141036 ~138504MiB | bash scripts/Qwen3_4B_on_HLE_MATH_text_CTO_vllm.sh 0 100
+[GPU1] 占用   98%  130159/143771  |  父进程 pid=3567854 ~130146MiB | bash /data/ppnm/Contrastive-Trajectory-Optimization/scripts/Qwen3_4B_on_HMMT_24_by_CTO_hf.sh
+[GPU2] 占用   97%  129509/143771  |  父进程 pid=1452132 ~129496MiB | bash scripts/Qwen3_30B_on_IMO_by_CTO_vllm.sh 0 100
+[GPU3] 空闲    0%  4/143771  |  无计算进程，显存 4/143771 MiB
+[GPU4] 占用   99%  122567/143771  |  父进程 pid=2378318 ~122554MiB | bash scripts/Phi4_reasoning_on_HMMT_24_by_CTO_vllm.sh
+[GPU5] 占用   96%  122567/143771  |  父进程 pid=2378474 ~122554MiB | bash scripts/Phi4_reasoning_on_HMMT_25_by_CTO_vllm.sh 0 100
+[GPU6] 占用   98%  124213/143771  |  父进程 pid=935132 ~124200MiB | bash scripts/Qwen3_4B_on_IMO_by_CTO_vllm.sh 0 401
+[GPU7] 占用   99%  122585/143771  |  父进程 pid=1905266 ~122572MiB | bash scripts/Qwen3_30B_on_HLE_MATH_text_CTO_vllm.sh 0 100
+
+—— 仅空闲卡：对照上次快照 ——
+上次快照来源: last_snapshot.json
+
+【GPU 3】空闲  显存≤128MiB 且无 compute 进程
+  曾: 父进程 pid=2373963  计算进程 pid=2747267  bash scripts/Qwen3_30B_on_HMMT_25_by_CTO_vllm_run2.sh 0 100
+      该父进程 PID 仍在: 否
+  未从命令行解析到日志路径（建议在 nohup 里写绝对路径重定向）。
+
+提示: 空闲/日志判断为启发式；疑义请直接看 tmux 与完整日志。
