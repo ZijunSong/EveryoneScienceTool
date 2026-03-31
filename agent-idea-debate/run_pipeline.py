@@ -27,6 +27,15 @@ try:
 except ImportError:
     OpenAI = None  # type: ignore
 
+from acl_review import (
+    ACL_IDEA_USER_SUFFIX,
+    ACL_OUTLINE_USER_SUFFIX,
+    acl_scores_pass,
+    acl_verdict_line_mismatch,
+    combine_acl_reviews,
+    outline_revision_user,
+    parse_acl_total_score,
+)
 from fetch_document import (
     SourceBundle,
     fetch_arxiv_related_context,
@@ -113,6 +122,21 @@ class RoundRecord:
     generator_output: str
     reviewer_output: str
     reflection_output: str
+    # ACL 模式：三位审稿人结构化结果；classic 为 None
+    acl_reviews: list[dict[str, Any]] | None = None
+
+
+def _serialize_round_record(x: RoundRecord) -> dict[str, Any]:
+    d: dict[str, Any] = {
+        "macro_attempt": x.macro_attempt,
+        "round": x.round,
+        "generator_output": x.generator_output,
+        "reviewer_output": x.reviewer_output,
+        "reflection_output": x.reflection_output,
+    }
+    if x.acl_reviews:
+        d["acl_reviews"] = x.acl_reviews
+    return d
 
 
 @dataclass
@@ -321,6 +345,7 @@ def state_from_checkpoint(cp: dict[str, Any]) -> RunState:
                 generator_output=row.get("generator_output", ""),
                 reviewer_output=row.get("reviewer_output", ""),
                 reflection_output=row.get("reflection_output", ""),
+                acl_reviews=row.get("acl_reviews"),
             )
         )
     return st
@@ -353,6 +378,11 @@ def build_progress_markdown(state: RunState, meta: dict[str, Any]) -> str:
         f"# Idea 辩论流水线记录\n\n生成时间：{meta.get('timestamp')}\n",
         f"## 输入\n\n- 来源：`{state.paper_source}`\n",
     ]
+    if meta.get("review_mode"):
+        md_lines.append(
+            f"- 审稿模式：**{meta.get('review_mode')}**"
+            f"（ACL：三位审稿人 5 分制，**最低分**≥{meta.get('acl_score_threshold', 3)} 通过）\n"
+        )
     mem = meta.get("abandoned_memories") or []
     if mem:
         md_lines.append("\n## 已否决 idea 记忆（精炼摘要）\n\n")
@@ -363,6 +393,9 @@ def build_progress_markdown(state: RunState, meta: dict[str, Any]) -> str:
             f"\n## 尝试 {x.macro_attempt} · 第 {x.round} 轮 · 生成器（proposal）\n\n{x.generator_output}\n"
         )
         md_lines.append(f"\n## 尝试 {x.macro_attempt} · 第 {x.round} 轮 · 审稿人\n\n{x.reviewer_output}\n")
+        if x.acl_reviews:
+            bits = [f"`{a.get('model', '?')}`→**{a.get('score', '?')}/5**" for a in x.acl_reviews]
+            md_lines.append("\n（ACL 三审稿人分数：" + "，".join(bits) + "）\n")
         md_lines.append(f"\n## 尝试 {x.macro_attempt} · 第 {x.round} 轮 · 生成器回应导师\n\n{x.reflection_output}\n")
 
     md_lines.append("\n## 最终用于大纲的标题与摘要\n\n")
@@ -464,16 +497,7 @@ def write_checkpoint(
         "abandoned_memories": list(abandoned_memories),
         "current_macro_attempt": current_macro_attempt,
         "inner_next_round": inner_next_round,
-        "rounds": [
-            {
-                "macro_attempt": x.macro_attempt,
-                "round": x.round,
-                "generator_output": x.generator_output,
-                "reviewer_output": x.reviewer_output,
-                "reflection_output": x.reflection_output,
-            }
-            for x in state.rounds
-        ],
+        "rounds": [_serialize_round_record(x) for x in state.rounds],
         "final_title_abstract": state.final_title_abstract,
         "outline_draft": state.outline_draft,
         "outline_review_feedback": state.outline_review_feedback,
@@ -499,16 +523,7 @@ def save_final_artifacts(
         "paper_source": state.paper_source,
         "paper_excerpt": state.paper_text,
         "abandoned_memories": meta.get("abandoned_memories", []),
-        "rounds": [
-            {
-                "macro_attempt": x.macro_attempt,
-                "round": x.round,
-                "generator_output": x.generator_output,
-                "reviewer_output": x.reviewer_output,
-                "reflection_output": x.reflection_output,
-            }
-            for x in state.rounds
-        ],
+        "rounds": [_serialize_round_record(x) for x in state.rounds],
         "final_title_abstract": state.final_title_abstract,
         "outline_draft": state.outline_draft,
         "outline_review_feedback": state.outline_review_feedback,
@@ -560,6 +575,8 @@ def run(
     bundle: SourceBundle,
     base_url: str,
     api_key: str,
+    generator_base_url: str | None,
+    generator_api_key: str | None,
     default_model: str,
     generator_model: str | None,
     reviewer_model: str | None,
@@ -581,6 +598,9 @@ def run(
     related_work_context: str,
     min_debate_rounds_before_outline: int,
     verbose_progress: bool,
+    no_progress_distill: bool = False,
+    progress_distill_model: str | None = None,
+    review_mode: str = "acl",
 ) -> RunState:
     if OpenAI is None:
         raise RuntimeError("请安装 openai: pip install -r requirements.txt")
@@ -593,20 +613,64 @@ def run(
     api_max_retries = int(run_cfg.get("api_max_retries", 6))
     api_retry_base_delay_sec = float(run_cfg.get("api_retry_base_delay_sec", 2.0))
 
+    pd_model = progress_distill_model or run_cfg.get("progress_distill_model", "gpt-5-codex-mini")
+    pd_temp = float(run_cfg.get("progress_distill_temperature", 0.35))
+    pd_max_tokens = int(run_cfg.get("progress_distill_max_tokens", 8192))
+    pd_timeout = float(run_cfg.get("progress_distill_timeout_sec", 600))
+    progress_distill_enabled = bool(run_cfg.get("progress_distill", True)) and not no_progress_distill
+
     models_cfg = cfg.get("models") or {}
     gen_m = generator_model or models_cfg.get("generator") or default_model
     rev_m = reviewer_model or models_cfg.get("reviewer") or default_model
     out_m = outline_model or models_cfg.get("outline") or default_model
-    models = {"generator": gen_m, "reviewer": rev_m, "outline": out_m}
+    rm_cfg = (review_mode or run_cfg.get("review_mode") or "acl").strip().lower()
+    if rm_cfg not in ("classic", "acl"):
+        rm_cfg = "acl"
+    review_mode_acl = rm_cfg == "acl"
+    rac = models_cfg.get("reviewers_acl") or run_cfg.get("reviewers_acl")
+    if isinstance(rac, list) and rac:
+        reviewers_acl = [str(x).strip() for x in rac if str(x).strip()][:3]
+    elif isinstance(rac, str) and rac.strip():
+        reviewers_acl = [x.strip() for x in rac.split(",") if x.strip()][:3]
+    else:
+        reviewers_acl = []
+    _pad = ["gpt-5.4", "gpt-5.2-codex", "gpt-5.1-codex-max"]
+    for _p in _pad:
+        if len(reviewers_acl) >= 3:
+            break
+        reviewers_acl.append(_p)
+    reviewers_acl = reviewers_acl[:3]
+    acl_threshold = float(run_cfg.get("acl_score_threshold", 3))
+    max_outline_acl_rounds = max(1, int(run_cfg.get("max_outline_acl_rounds", 5)))
+    models = {
+        "generator": gen_m,
+        "reviewer": rev_m,
+        "outline": out_m,
+        "review_mode": rm_cfg,
+        "reviewers_acl": ",".join(reviewers_acl),
+    }
 
-    client = OpenAI(base_url=normalize_openai_base_url(base_url), api_key=api_key)
+    client_default = OpenAI(base_url=normalize_openai_base_url(base_url), api_key=api_key)
+    # 生成器可单独指定 base_url / api_key（例如 Claude 走另一网关）；未指定则与默认相同
+    gen_url_raw = (generator_base_url or base_url).strip()
+    gen_key = (generator_api_key if generator_api_key is not None else api_key).strip()
+    same_as_default = (
+        normalize_openai_base_url(gen_url_raw) == normalize_openai_base_url(base_url.strip())
+        and gen_key == api_key.strip()
+    )
+    client_generator = (
+        client_default
+        if same_as_default
+        else OpenAI(base_url=normalize_openai_base_url(gen_url_raw), api_key=gen_key)
+    )
 
     def log(msg: str) -> None:
         print(msg, flush=True, file=sys.stderr)
 
-    def api_chat(model: str, messages: list[dict[str, str]]) -> str:
+    def api_chat(model: str, messages: list[dict[str, str]], *, use_generator_client: bool = False) -> str:
+        c = client_generator if use_generator_client else client_default
         return call_chat(
-            client,
+            c,
             model,
             messages,
             temperature,
@@ -622,8 +686,10 @@ def run(
         state.paper_text = paper_text
 
     memory: list[str] = list(memory_log or [])
-    meta = dict(meta)
     meta["abandoned_memories"] = list(memory)
+    meta["review_mode"] = rm_cfg
+    meta["acl_score_threshold"] = acl_threshold
+    meta["reviewers_acl"] = reviewers_acl
 
     prompts_root = cfg.get("prompts", {})
     fallback_multi = prompts_root.get("fallback_multi_round", "round2")
@@ -645,6 +711,28 @@ def run(
             current_macro_attempt=macro_attempt,
             inner_next_round=inner_start,
         )
+        if progress_distill_enabled:
+            from distill_progress import refresh_from_run_state
+
+            meta["progress_distill_model"] = pd_model
+            refresh_from_run_state(
+                session_dir,
+                paper_source=state.paper_source,
+                meta_timestamp=str(meta.get("timestamp", "")),
+                rounds=state.rounds,
+                abandoned_memories=memory,
+                final_title_abstract=state.final_title_abstract,
+                outline_draft=state.outline_draft,
+                outline_review_feedback=state.outline_review_feedback,
+                outline_output=state.outline_output,
+                client=client_default,
+                model=pd_model,
+                temperature=pd_temp,
+                max_tokens=pd_max_tokens,
+                timeout=pd_timeout,
+                dry_run=dry_run,
+                verbose=verbose_progress,
+            )
         if verbose_progress:
             log(f"[进度] 已保存 checkpoint（phase={phase}, status={status}）→ {session_dir / 'checkpoint.json'}")
         else:
@@ -688,13 +776,106 @@ def run(
             log(f"[进度] 大纲初稿完成（约 {len(draft)} 字）。")
         else:
             log(f"[进度] 大纲 ① ✓ {_chars_hint(len(draft))}字")
+
+        review_t = (outline_cfg.get("review_prompt") or "").strip() or DEFAULT_OUTLINE_REVIEW_PROMPT
+        paper_excerpt = paper_text[:8000]
+
+        if review_mode_acl:
+            candidate = draft
+            last_scores: list[int] = []
+            for oi in range(max_outline_acl_rounds):
+                ru = format_prompt(
+                    review_t,
+                    {
+                        "final_title_abstract": state.final_title_abstract,
+                        "outline_draft": candidate,
+                        "paper_excerpt": paper_excerpt,
+                        "paper_text": paper_text,
+                    },
+                )
+                ru_full = ru + ACL_OUTLINE_USER_SUFFIX
+                ol_items: list[dict[str, Any]] = []
+                ol_scores: list[float] = []
+                if verbose_progress:
+                    log(f"[进度] 大纲 · ② ACL 审稿（第 {oi + 1}/{max_outline_acl_rounds} 轮迭代）…")
+                else:
+                    log(f"[进度] 大纲 ② ACL·{oi + 1}/{max_outline_acl_rounds} …")
+                for idx_o, rm_name in enumerate(reviewers_acl):
+                    if dry_run:
+                        ot = (
+                            "ACL总分：4/5\n\n**简要评价**\n（dry-run）\n\n一句话结论：值得继续推进"
+                        )
+                        sc = 4
+                    else:
+                        ot = api_chat(
+                            rm_name,
+                            [
+                                {
+                                    "role": "system",
+                                    "content": "你是模拟 ACL 顶会的审稿人，审阅论文大纲。请按用户要求的格式输出，全部使用中文。",
+                                },
+                                {"role": "user", "content": ru_full},
+                            ],
+                        )
+                        sc = parse_acl_total_score(ot)
+                    if acl_verdict_line_mismatch(sc, ot):
+                        log(
+                            f"[ACL 警告] 大纲审稿 `{rm_name}` 解析分数为 {sc}/5，"
+                            f"但「一句话结论」含需重大修改/建议放弃，与口径不符，请复核原文。"
+                        )
+                    ol_items.append({"model": rm_name, "score": sc, "text": ot})
+                    ol_scores.append(sc)
+                combined_ol = combine_acl_reviews("大纲审稿人", ol_items)
+                state.outline_review_feedback = combined_ol
+                last_scores = list(ol_scores)
+                meta["outline_acl_scores"] = last_scores
+                meta["outline_acl_pass"] = acl_scores_pass(last_scores, acl_threshold)
+                if verbose_progress:
+                    log(f"[进度] 大纲 ACL 分数 {last_scores}（阈≥{acl_threshold}）")
+                else:
+                    log(f"[进度] 大纲 ②✓ ACL {last_scores}")
+                if acl_scores_pass(ol_scores, acl_threshold):
+                    state.outline_output = candidate
+                    if verbose_progress:
+                        log("[进度] 大纲 ACL 已通过，无需再修订。")
+                    return
+                if oi + 1 >= max_outline_acl_rounds:
+                    state.outline_output = candidate
+                    print(
+                        f"[进度] 警告：大纲 ACL 仍未全部≥{acl_threshold}（{last_scores}），"
+                        f"已输出当前修订稿；meta.outline_acl_pass=false",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    meta["outline_acl_pass"] = False
+                    return
+                rev_u = outline_revision_user(
+                    state.final_title_abstract,
+                    candidate,
+                    combined_ol,
+                    paper_text,
+                )
+                if verbose_progress:
+                    log(f"[进度] 大纲 · ③ 据 ACL 意见修订 ({out_m}) …")
+                else:
+                    log("[进度] 大纲 ③ 修订 …")
+                candidate = api_chat(
+                    out_m,
+                    [
+                        {
+                            "role": "system",
+                            "content": "你是一位资深研究员，根据三位审稿人的 ACL 意见把大纲修订为可执行终稿，全部使用中文。",
+                        },
+                        {"role": "user", "content": rev_u},
+                    ],
+                )
+            return
+
         if not enable_outline_review:
             state.outline_review_feedback = ""
             state.outline_output = draft
             log("[进度] 大纲 无审稿修订（enable_outline_review=false）")
             return
-        review_t = (outline_cfg.get("review_prompt") or "").strip() or DEFAULT_OUTLINE_REVIEW_PROMPT
-        paper_excerpt = paper_text[:8000]
         review_user = format_prompt(
             review_t,
             {
@@ -837,7 +1018,7 @@ def run(
             if dry_run:
                 gen_out = "[dry-run] generator"
             else:
-                gen_out = api_chat(gen_m, gen_messages)
+                gen_out = api_chat(gen_m, gen_messages, use_generator_client=True)
             if verbose_progress:
                 log(f"[进度] ① 生成器完成（约 {len(gen_out)} 字）")
             else:
@@ -853,25 +1034,70 @@ def run(
                     "reviewer_output": "",
                 },
             )
-            rev_messages = [
-                {"role": "system", "content": "你是一位严格的顶会审稿人，按要求用中文输出。"},
-                {"role": "user", "content": rev_user},
-            ]
-            if verbose_progress:
-                log(f"[进度] 尝试 {macro_attempt} · 第 {r}/{max_rounds} 轮 · ② 审稿人 ({rev_m}) …")
+            acl_items: list[dict[str, Any]] | None = None
+            idea_scores: list[float] = []
+            if review_mode_acl:
+                rev_user_full = rev_user + ACL_IDEA_USER_SUFFIX
+                acl_items = []
+                idea_scores = []
+                for idx_r, rm_name in enumerate(reviewers_acl):
+                    if verbose_progress:
+                        log(
+                            f"[进度] 尝试 {macro_attempt} · 第 {r}/{max_rounds} 轮 · "
+                            f"② ACL 审稿 {idx_r + 1}/3（{rm_name}）…"
+                        )
+                    else:
+                        log(f"[进度] {tag} ②ACL{idx_r + 1}/3 …")
+                    if dry_run:
+                        txt = (
+                            "ACL总分：4/5\n\n**简要评价**\n（dry-run）\n\n**主要优点**\n- …\n\n"
+                            "**主要问题**\n- …\n\n**可选微调**\n无\n\n一句话结论：值得继续推进"
+                        )
+                        sc = 4
+                    else:
+                        txt = api_chat(
+                            rm_name,
+                            [
+                                {
+                                    "role": "system",
+                                    "content": "你是模拟 ACL 顶会的严格审稿人。请按用户要求的格式输出，全部使用中文。",
+                                },
+                                {"role": "user", "content": rev_user_full},
+                            ],
+                        )
+                        sc = parse_acl_total_score(txt)
+                    if acl_verdict_line_mismatch(sc, txt):
+                        log(
+                            f"[ACL 警告] 审稿人 `{rm_name}` 解析分数为 {sc}/5，"
+                            f"但「一句话结论」含需重大修改/建议放弃，与口径不符，请复核原文。"
+                        )
+                    acl_items.append({"model": rm_name, "score": sc, "text": txt})
+                    idea_scores.append(sc)
+                rev_out = combine_acl_reviews("审稿人", acl_items)
+                if verbose_progress:
+                    log(f"[进度] ② ACL 面板：分数 {idea_scores}（通过阈：三位最低分≥{acl_threshold}）")
+                else:
+                    log(f"[进度] {tag} ②✓ ACL {idea_scores}")
             else:
-                log(f"[进度] {tag} ②审稿 …")
-            if dry_run:
-                rev_out = (
-                    "[dry-run] reviewer\n\n第一部分：一句话结论\n\n**建议放弃**\n\n"
-                    "（dry-run：默认模拟审稿人建议放弃，以覆盖完整辩论分支；实跑以模型为准。）"
-                )
-            else:
-                rev_out = api_chat(rev_m, rev_messages)
-            if verbose_progress:
-                log(f"[进度] ② 审稿人完成（约 {len(rev_out)} 字）")
-            else:
-                log(f"[进度] {tag} ②✓ {_chars_hint(len(rev_out))}字")
+                rev_messages = [
+                    {"role": "system", "content": "你是一位严格的顶会审稿人，按要求用中文输出。"},
+                    {"role": "user", "content": rev_user},
+                ]
+                if verbose_progress:
+                    log(f"[进度] 尝试 {macro_attempt} · 第 {r}/{max_rounds} 轮 · ② 审稿人 ({rev_m}) …")
+                else:
+                    log(f"[进度] {tag} ②审稿 …")
+                if dry_run:
+                    rev_out = (
+                        "[dry-run] reviewer\n\n第一部分：一句话结论\n\n**建议放弃**\n\n"
+                        "（dry-run：默认模拟审稿人建议放弃，以覆盖完整辩论分支；实跑以模型为准。）"
+                    )
+                else:
+                    rev_out = api_chat(rev_m, rev_messages)
+                if verbose_progress:
+                    log(f"[进度] ② 审稿人完成（约 {len(rev_out)} 字）")
+                else:
+                    log(f"[进度] {tag} ②✓ {_chars_hint(len(rev_out))}字")
 
             ref_user = format_prompt(
                 ref_t,
@@ -894,7 +1120,7 @@ def run(
             if dry_run:
                 ref_out = "[dry-run] reflection"
             else:
-                ref_out = api_chat(gen_m, ref_messages)
+                ref_out = api_chat(gen_m, ref_messages, use_generator_client=True)
             if verbose_progress:
                 log(f"[进度] ③ 完成（约 {len(ref_out)} 字）")
             else:
@@ -907,6 +1133,7 @@ def run(
                     generator_output=gen_out,
                     reviewer_output=rev_out,
                     reflection_output=ref_out,
+                    acl_reviews=acl_items,
                 )
             )
             inner_start = r + 1
@@ -923,6 +1150,20 @@ def run(
                     else:
                         log(f"[进度] {tag} 放弃主张无效（审稿人未否定）→ 续")
                     if r >= max_rounds:
+                        if review_mode_acl and not acl_scores_pass(idea_scores, acl_threshold):
+                            memory.append(
+                                summarize_abandoned_idea(gen_out, ref_out)
+                                + f" | ACL idea 分数 {idea_scores} 未全部≥{acl_threshold}，内层用尽"
+                            )
+                            meta["abandoned_memories"] = list(memory)
+                            macro_attempt += 1
+                            inner_start = 1
+                            if macro_attempt > max_macro_attempts:
+                                write_failure_no_idea(session_dir, paper_source=source, memory=memory, meta=meta)
+                                checkpoint("failed", "abandoned_all")
+                                sys.exit(3)
+                            checkpoint("debating", "in_progress")
+                            break
                         if verbose_progress:
                             log(
                                 "[进度] 已达最大内层轮次，仍以当前 proposal/回应定稿并生成大纲"
@@ -958,7 +1199,12 @@ def run(
                 checkpoint("debating", "in_progress")
                 break
 
-            positive = not reviewer_recommends_abandon(rev_out)
+            if review_mode_acl:
+                positive = acl_scores_pass(idea_scores, acl_threshold) and not reviewer_recommends_abandon(
+                    rev_out
+                )
+            else:
+                positive = not reviewer_recommends_abandon(rev_out)
             if positive and r >= min_debate_rounds_before_outline:
                 if verbose_progress:
                     log(
@@ -975,6 +1221,32 @@ def run(
                 return state
 
             if r >= max_rounds:
+                if review_mode_acl and not acl_scores_pass(idea_scores, acl_threshold):
+                    memory.append(
+                        summarize_abandoned_idea(gen_out, ref_out)
+                        + f" | ACL idea 分数 {idea_scores} 未全部≥{acl_threshold}，内层用尽"
+                    )
+                    meta["abandoned_memories"] = list(memory)
+                    macro_attempt += 1
+                    inner_start = 1
+                    if verbose_progress:
+                        log(
+                            f"[进度] 内层用尽且 ACL idea 未达 {acl_threshold} 分（{idea_scores}）"
+                            f"→ 宏观尝试 {macro_attempt}/{max_macro_attempts}"
+                        )
+                    else:
+                        log(f"[进度] {tag} 用尽·ACL未过→宏观{macro_attempt}")
+                    if macro_attempt > max_macro_attempts:
+                        write_failure_no_idea(session_dir, paper_source=source, memory=memory, meta=meta)
+                        checkpoint("failed", "abandoned_all")
+                        print(
+                            f"\n未能得到 ACL≥{acl_threshold} 的 idea：宏观尝试已用尽。\n"
+                            f"说明：{session_dir / 'failure_no_idea.md'}\n",
+                            file=sys.stderr,
+                        )
+                        sys.exit(3)
+                    checkpoint("debating", "in_progress")
+                    break
                 if verbose_progress:
                     log("[进度] 内层轮次已用尽，以最后一版 proposal/回应 定稿并生成大纲。")
                 else:
@@ -1034,6 +1306,16 @@ def main() -> None:
     ap.add_argument("source", help="论文/Blog URL，或本地 .pdf/.html/.txt 路径")
     ap.add_argument("--base-url", default=os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"))
     ap.add_argument("--api-key", default=os.environ.get("OPENAI_API_KEY", ""))
+    ap.add_argument(
+        "--generator-base-url",
+        default=os.environ.get("OPENAI_GENERATOR_BASE_URL"),
+        help="仅生成器（proposal + reflection）使用的 OpenAI 兼容 API 地址；默认与 --base-url 相同。可用环境变量 OPENAI_GENERATOR_BASE_URL。",
+    )
+    ap.add_argument(
+        "--generator-api-key",
+        default=os.environ.get("OPENAI_GENERATOR_API_KEY"),
+        help="仅生成器使用的 API Key；默认与 --api-key 相同。可只改密钥不改 URL。环境变量 OPENAI_GENERATOR_API_KEY。",
+    )
     ap.add_argument("--model", default=os.environ.get("OPENAI_MODEL", "gpt-4o"), help="默认模型（三角色未单独指定时用）")
     ap.add_argument("--generator-model", default=None)
     ap.add_argument("--reviewer-model", default=None)
@@ -1086,6 +1368,22 @@ def main() -> None:
         action="store_true",
         help="详细进度（字数、完整 checkpoint 路径等）；也可在配置 run.verbose_progress: true",
     )
+    ap.add_argument(
+        "--no-progress-distill",
+        action="store_true",
+        help="关闭每次 checkpoint 后的 progress 精炼（不写入 progress_refined.md）",
+    )
+    ap.add_argument(
+        "--progress-distill-model",
+        default=None,
+        help="覆盖配置中的 progress_distill_model（默认 gpt-5-codex-mini）",
+    )
+    ap.add_argument(
+        "--review-mode",
+        choices=["classic", "acl"],
+        default=None,
+        help="classic=单审稿人；acl=三位审稿人 ACL 5 分制（默认读配置 run.review_mode，默认 acl）",
+    )
 
     args = ap.parse_args()
     if not args.api_key and not args.dry_run:
@@ -1113,9 +1411,22 @@ def main() -> None:
         print("错误：--max-idea-attempts / max_idea_attempts 至少为 1。", file=sys.stderr)
         sys.exit(1)
 
+    def _strip_opt(v: str | None) -> str | None:
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s if s else None
+
+    gen_base_u = _strip_opt(args.generator_base_url)
+    gen_api_k = _strip_opt(args.generator_api_key)
+
     meta = {
         "timestamp": datetime.now().isoformat(),
         "base_url": args.base_url,
+        "generator_base_url": gen_base_u or args.base_url,
+        "generator_uses_separate_client": bool(
+            gen_base_u or (gen_api_k is not None and gen_api_k != _strip_opt(args.api_key))
+        ),
         "model_default": args.model,
         "generator_model": args.generator_model,
         "reviewer_model": args.reviewer_model,
@@ -1128,6 +1439,9 @@ def main() -> None:
         "max_idea_attempts": max_idea_attempts,
         "no_related_search": args.no_related_search,
         "verbose_progress": verbose_progress,
+        "progress_distill": bool(run_cfg_main.get("progress_distill", True)) and not args.no_progress_distill,
+        "progress_distill_model": args.progress_distill_model or run_cfg_main.get("progress_distill_model", "gpt-5-codex-mini"),
+        "review_mode": args.review_mode or run_cfg_main.get("review_mode", "acl"),
     }
 
     def log(msg: str) -> None:
@@ -1262,6 +1576,8 @@ def main() -> None:
         bundle=bundle,
         base_url=args.base_url,
         api_key=args.api_key or "dummy",
+        generator_base_url=gen_base_u,
+        generator_api_key=gen_api_k,
         default_model=args.model,
         generator_model=args.generator_model,
         reviewer_model=args.reviewer_model,
@@ -1283,6 +1599,9 @@ def main() -> None:
         related_work_context=related_work_context,
         min_debate_rounds_before_outline=min_debate_rounds,
         verbose_progress=verbose_progress,
+        no_progress_distill=args.no_progress_distill,
+        progress_distill_model=args.progress_distill_model,
+        review_mode=args.review_mode or run_cfg_main.get("review_mode", "acl"),
     )
 
     lines = [
@@ -1293,11 +1612,24 @@ def main() -> None:
         f"  {session_dir / 'final_debate.txt'}",
         f"  {session_dir / 'checkpoint.json'}",
         f"  {session_dir / 'progress.md'}",
+        f"  {session_dir / 'progress_refined.md'}  （精炼阅读版，若未关闭 progress_distill）",
     ]
     ofp = session_dir / OUTLINE_FINAL_FILENAME
     if ofp.is_file():
         lines.append(f"  {ofp}  （仅定稿大纲）")
     print("\n".join(lines), flush=True)
+
+    if (
+        not args.dry_run
+        and not args.skip_outline
+        and meta.get("review_mode") == "acl"
+        and meta.get("outline_acl_pass") is False
+    ):
+        print(
+            f"\n错误：大纲 ACL 未全部≥{meta.get('acl_score_threshold', 3)} 分，任务未成功结束（退出码 5）。",
+            file=sys.stderr,
+        )
+        sys.exit(5)
 
 
 if __name__ == "__main__":

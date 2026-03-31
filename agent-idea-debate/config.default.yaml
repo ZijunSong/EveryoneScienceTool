@@ -3,6 +3,12 @@
 # 大纲审稿占位符：{final_title_abstract} {outline_draft} {outline_review} {paper_excerpt}
 
 run:
+  # 审稿模式：classic=单一审稿人；acl=三位审稿人 ACL 5 分制（每位≥acl_score_threshold 分才通过）
+  review_mode: acl
+  # 通过阈（三位审稿人分数的最低分 ≥ 该值）；支持 2.5、3.5 等半分（见 acl_review 口径说明）
+  acl_score_threshold: 3
+  # 大纲阶段：ACL 未达标时最多迭代修订轮数
+  max_outline_acl_rounds: 5
   max_rounds: 5
   max_idea_attempts: 5
   # 审稿人未写「建议放弃」时，仍须至少完成这么多轮「生成→审稿→回应」才允许定稿进大纲（可用 CLI --min-debate-rounds 覆盖，且不超过 max_rounds）
@@ -20,12 +26,23 @@ run:
   # 上游网关偶发 403（pre_consume_token_quota_failed / SQL）时可自动重试
   api_max_retries: 6
   api_retry_base_delay_sec: 2.0
+  # 每次 checkpoint 后用独立模型精炼 progress → progress_refined.md（可按轮缓存，省重复调用）
+  progress_distill: true
+  progress_distill_model: gpt-5-codex-mini
+  progress_distill_temperature: 0.35
+  progress_distill_max_tokens: 8192
+  progress_distill_timeout_sec: 600
 
 # 可为不同角色指定不同模型；若省略则使用 CLI 的 --model
+# reviewers_acl：仅 review_mode=acl 时使用，须恰好 3 个不同模型名（建议强/中/Code 各一以保证区分度）
 models:
   generator: null   # null 表示使用默认 --model
   reviewer: null
   outline: null
+  reviewers_acl:
+    - gpt-5.4
+    - gpt-5.2-codex
+    - gpt-5.1-codex-max
 
 prompts:
   round1:
